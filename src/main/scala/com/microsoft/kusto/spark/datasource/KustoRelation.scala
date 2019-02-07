@@ -12,14 +12,15 @@ import sun.reflect.generics.reflectiveObjects.NotImplementedException
 
 case class KustoRelation(cluster: String,
                          database: String,
-                         table: String,
                          appId: String,
                          appKey: String,
                          authorityId: String,
                          query: String,
                          isLeanMode: Boolean,
+                         numPartitions: Int,
+                         partitioningColumn: Option[String],
                          customSchema: Option[String] = None)
-                   (@transient val sparkContext: SQLContext) extends BaseRelation with TableScan with Serializable {
+                        (@transient val sparkContext: SQLContext) extends BaseRelation with TableScan with Serializable {
 
   private val primaryResultTableIndex = 0
   private val normalizedQuery = KustoQueryUtils.normalizeQuery(query)
@@ -27,40 +28,49 @@ case class KustoRelation(cluster: String,
   override def sqlContext: SQLContext = sparkContext
 
   override def schema: StructType = {
-    if (customSchema.isDefined)
-    {
+    if (customSchema.isDefined) {
       StructType.fromDDL(customSchema.get)
     }
     else getSchema
   }
 
   override def buildScan(): RDD[Row] = {
-    if (isLeanMode) leanBuildScan() else scaleBuildScan()
-  }
-
-  def leanBuildScan() : RDD[Row] = {
-    val kustoConnectionString = ConnectionStringBuilder.createWithAadApplicationCredentials(s"https://$cluster.kusto.windows.net", appId, appKey, authorityId)
-    val queryToPost = if (!table.isEmpty) table else normalizedQuery
-    val kustoResult = ClientFactory.createClient(kustoConnectionString).execute(database, queryToPost)
-    var serializer = KustoResponseDeserializer(kustoResult)
-    sparkContext.createDataFrame(serializer.toRows, serializer.getSchema).rdd
-  }
-
-  def scaleBuildScan() : RDD[Row] = {
-    throw new NotImplementedException
+    if (isLeanMode) {
+      KustoRDD.leanBuildScan(
+        KustoRddParameters(sqlContext, schema, cluster, database, query, appId, appKey, authorityId)
+      )
+    } else {
+      KustoRDD.scaleBuildScan(
+        KustoRddParameters(sqlContext, schema, cluster, database, query, appId, appKey, authorityId),
+        KustoPartitionInfo(numPartitions, setPartitioningColumn(partitioningColumn, isLeanMode))
+      )
+    }
   }
 
   private def getSchema: StructType = {
-    if (query.isEmpty && table.isEmpty) {
+    if (query.isEmpty) {
       throw new InvalidParameterException("Query and table name are both empty")
     }
 
-    val getSchemaQuery = if (!table.isEmpty) KustoQueryUtils.getQuerySchemaQuery(table) else if (KustoQueryUtils.isQuery(query)) KustoQueryUtils.getQuerySchemaQuery(normalizedQuery) else ""
+    val getSchemaQuery = if (KustoQueryUtils.isQuery(query)) KustoQueryUtils.getQuerySchemaQuery(normalizedQuery) else ""
     if (getSchemaQuery.isEmpty) {
       throw new RuntimeException("Cannot get schema. Please provide a valid kusto table name or a valid query.")
     }
 
     val kustoConnectionString = ConnectionStringBuilder.createWithAadApplicationCredentials(s"https://$cluster.kusto.windows.net", appId, appKey, authorityId)
     KustoResponseDeserializer(ClientFactory.createClient(kustoConnectionString).execute(database, getSchemaQuery)).getSchema
+  }
+
+  private def setPartitioningColumn(partitioningColumn: Option[String], isLean: Boolean): String = {
+    if (isLean) return ""
+
+    if (partitioningColumn.isDefined) {
+      val requestedColumn = partitioningColumn.get
+      if (!schema.contains(requestedColumn)) {
+        throw new InvalidParameterException(
+          s"Cannot partition by column '$requestedColumn' since it is not art of the query schema: ${sys.props("line.separator")}${schema.mkString(", ")}")
+      }
+      requestedColumn
+    } else schema.head.name
   }
 }

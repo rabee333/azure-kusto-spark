@@ -1,20 +1,15 @@
 package com.microsoft.kusto.spark.datasource
 
 import java.security.InvalidParameterException
-
 import com.microsoft.kusto.spark.datasink.KustoWriter
 import com.microsoft.kusto.spark.utils.{KustoDataSourceUtils, KustoQueryUtils}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.sources.{BaseRelation, CreatableRelationProvider, DataSourceRegister, RelationProvider}
 import org.apache.spark.sql.{DataFrame, SQLContext, SaveMode}
-import sun.reflect.generics.reflectiveObjects.NotImplementedException
-
-import scala.concurrent.duration._
 
 class DefaultSource extends CreatableRelationProvider
   with RelationProvider with DataSourceRegister {
 
-  val timeout: FiniteDuration = 10 minutes
   override def createRelation(sqlContext: SQLContext, mode: SaveMode, parameters: Map[String, String], data: DataFrame): BaseRelation = {
     val (isAsync,tableCreation) = KustoDataSourceUtils.validateSinkParameters(parameters)
 
@@ -59,26 +54,38 @@ class DefaultSource extends CreatableRelationProvider
   }
 
   override def createRelation(sqlContext: SQLContext, parameters: Map[String, String]): BaseRelation = {
-    if (!parameters.getOrElse(KustoOptions.KUSTO_NUM_PARTITIONS, "1").equals("1")) {
-      throw new NotImplementedException()
-    }
+    val requestedPartitions = parameters.get(KustoOptions.KUSTO_NUM_PARTITIONS)
+    val readMode = parameters.getOrElse(KustoOptions.KUSTO_READ_MODE, "lean")
+    val numPartitions = setNumPartitionsPerMode(sqlContext, requestedPartitions, readMode)
 
-    if(!KustoOptions.supportedReadModes.contains(parameters.getOrElse(KustoOptions.KUSTO_READ_MODE, "lean").toLowerCase)) {
+    if(!KustoOptions.supportedReadModes.contains(readMode)) {
       throw new InvalidParameterException(s"Kusto read mode must be one of ${KustoOptions.supportedReadModes.mkString(", ")}")
     }
 
+    if (numPartitions != 1 && readMode.equals("lean")) {
+      throw new InvalidParameterException(s"Reading in lean mode cannot be done on multiple partitions. Requested number of partitions: $numPartitions")
+    }
 
     KustoRelation(
       parameters.getOrElse(KustoOptions.KUSTO_CLUSTER, ""),
       parameters.getOrElse(KustoOptions.KUSTO_DATABASE, ""),
-      parameters.getOrElse(KustoOptions.KUSTO_TABLE, ""),
       parameters.getOrElse(KustoOptions.KUSTO_AAD_CLIENT_ID, ""),
       parameters.getOrElse(KustoOptions.KUSTO_AAD_CLIENT_PASSWORD, ""),
       parameters.getOrElse(KustoOptions.KUSTO_AAD_AUTHORITY_ID, "microsoft.com"),
       parameters.getOrElse(KustoOptions.KUSTO_QUERY, ""),
-      parameters.getOrElse(KustoOptions.KUSTO_READ_MODE, "lean").equalsIgnoreCase("lean"),
+      readMode.equalsIgnoreCase("lean"),
+      numPartitions,
+      parameters.get(KustoOptions.KUSTO_PARTITION_COLUMN),
       parameters.get(KustoOptions.KUSTO_CUSTOM_DATAFRAME_COLUMN_TYPES))(sqlContext)
   }
 
   override def shortName(): String = "kusto"
+
+  private def setNumPartitionsPerMode(sqlContext: SQLContext, requestedNumPartitions: Option[String], readMode: String): Int = {
+    if (requestedNumPartitions.isDefined) requestedNumPartitions.get.toInt else {
+      if (readMode.equals("lean")) 1 else {
+        sqlContext.getConf("spark.sql.shuffle.partitions", "10").toInt
+      }
+    }
+  }
 }
