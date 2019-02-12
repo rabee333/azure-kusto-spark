@@ -2,6 +2,9 @@ package com.microsoft.kusto.spark.datasource
 
 import java.util.Locale
 
+import org.apache.spark.sql.SaveMode
+
+
 object KustoOptions {
   private val kustoOptionNames = collection.mutable.Set[String]()
 
@@ -9,6 +12,13 @@ object KustoOptions {
     kustoOptionNames += name.toLowerCase(Locale.ROOT)
     name
   }
+
+  val KEY_VAULT_URI = "keyVaultUri"
+  val KEY_VAULT_CREDENTIALS = "keyVaultCredentials"
+  val KEY_VAULT_PEM_FILE_PATH = "keyVaultPemFilePath"
+  val KEY_VAULT_CERTIFICATE_KEY = "keyVaultPemFileKey"
+  val KEY_VAULT_APP_ID = "keyVaultAppId"
+  val KEY_VAULT_APP_KEY = "keyVaultAppKey"
 
   // AAD application identifier of the client
   val KUSTO_AAD_CLIENT_ID: String = newOption("kustoAADClientID")
@@ -27,7 +37,6 @@ object KustoOptions {
   val KUSTO_DATABASE: String = newOption("kustoDatabase")
   val KUSTO_QUERY: String = newOption("kustoQuery")
   val KUSTO_QUERY_RETRY_TIMES: String = newOption("kustoQueryRetryTimes")
-  val KUSTO_SESSION_INIT_STATEMENT: String = newOption("sessionInitStatement")
   // Target/source Kusto table for writing/reading the data. See KustoSink.md/KustoSource.md for
   // required permissions
   val KUSTO_TABLE: String = newOption("kustoTable")
@@ -37,13 +46,12 @@ object KustoOptions {
   // it will be created, with a schema matching the DataFrame that is being written.
   // Default: 'FailIfNotExist'
   val KUSTO_TABLE_CREATE_OPTIONS: String = newOption("tableCreateOptions")
-  val KUSTO_TXN_ISOLATION_LEVEL: String = newOption("isolationLevel")
   val KUSTO_TRUNCATE: String = newOption("truncate")
   // When writing to Kusto, allows the driver to complete operation asynchronously.  See KustoSink.md for
   // details and limitations. Default: 'false'
   val KUSTO_WRITE_ENABLE_ASYNC: String = newOption("writeEnableAsync")
   // When writing to Kusto, limits the number of rows read back as BaseRelation. Default: '1'.
-  // To read back all rows, set as 'none'
+  // To read back all rows, set as 'none' (NONE_RESULT_LIMIT)
   val KUSTO_WRITE_RESULT_LIMIT: String = newOption("writeResultLimit")
   val KUSTO_READ_MODE: String = newOption("readMode")
 
@@ -71,6 +79,18 @@ object KustoOptions {
   // Blob container name
   val KUSTO_BLOB_CONTAINER: String = newOption("blobContainer")
 
+  val NONE_RESULT_LIMIT = "none"
+
   val supportedReadModes: Set[String] = Set("lean", "scale")
   val supportedPartitioningModes: Set[String] = Set("hash", "integral", "timestamp", "predicate")
 }
+
+abstract class KustoAuthentication
+abstract class KeyVaultAuthentication(uri: String) extends KustoAuthentication
+
+case class KustoTableCoordinates(cluster: String, database: String, table:String)
+case class AadApplicationAuthentication(ID: String, password: String, authority: String) extends KustoAuthentication
+case class KeyVaultAppAuthentiaction(uri: String, keyVaultAppID:String, keyVaultAppKey: String) extends KeyVaultAuthentication(uri)
+case class KeyVaultCertificateAuthentication(uri: String, pemFilePath: String, pemFilePassword: String) extends KeyVaultAuthentication(uri)
+case class KustoSparkWriteOptions(tableCreateOptions: KustoOptions.SinkTableCreationMode.SinkTableCreationMode = KustoOptions.SinkTableCreationMode.FailIfNotExist,
+                                  isAsync: Boolean = false, writeResultLimit: String, timeZone: String = "UTC", mode: SaveMode = SaveMode.Append)

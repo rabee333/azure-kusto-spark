@@ -81,7 +81,7 @@ case class KustoRelation(cluster: String,
 
     val getSchemaQuery = if (KustoQueryUtils.isQuery(query)) KustoQueryUtils.getQuerySchemaQuery(normalizedQuery) else ""
     if (getSchemaQuery.isEmpty) {
-      throw new RuntimeException("Cannot get schema. Please provide a valid kusto table name or a valid query.")
+      throw new RuntimeException("Spark connector cannot run Kusto commands. Please provide a valid query")
     }
 
     val kustoConnectionString = ConnectionStringBuilder.createWithAadApplicationCredentials(s"https://$cluster.kusto.windows.net", appId, appKey, authorityId)
