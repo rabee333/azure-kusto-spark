@@ -66,6 +66,13 @@ class DefaultSource extends CreatableRelationProvider
       throw new InvalidParameterException(s"Reading in lean mode cannot be done on multiple partitions. Requested number of partitions: $numPartitions")
     }
 
+    var storageSecreteIsAccountKey = true
+    var storageSecrete = parameters.get(KustoOptions.KUSTO_BLOB_STORAGE_ACCOUNT_KEY)
+    if (storageSecrete.isEmpty) {
+      storageSecrete = parameters.get(KustoOptions.KUSTO_BLOB_STORAGE_SAS_KEY)
+      if (storageSecrete.isDefined) storageSecreteIsAccountKey = false
+    }
+
     KustoRelation(
       parameters.getOrElse(KustoOptions.KUSTO_CLUSTER, ""),
       parameters.getOrElse(KustoOptions.KUSTO_DATABASE, ""),
@@ -76,7 +83,13 @@ class DefaultSource extends CreatableRelationProvider
       readMode.equalsIgnoreCase("lean"),
       numPartitions,
       parameters.get(KustoOptions.KUSTO_PARTITION_COLUMN),
-      parameters.get(KustoOptions.KUSTO_CUSTOM_DATAFRAME_COLUMN_TYPES))(sqlContext)
+      parameters.get(KustoOptions.KUSTO_CUSTOM_DATAFRAME_COLUMN_TYPES),
+      parameters.get(KustoOptions.KUSTO_CUSTOM_DATAFRAME_COLUMN_TYPES),
+      parameters.get(KustoOptions.KUSTO_BLOB_STORAGE_ACCOUNT_NAME),
+      parameters.get(KustoOptions.KUSTO_BLOB_CONTAINER),
+      storageSecrete,
+      storageSecreteIsAccountKey
+      )(sqlContext)
   }
 
   override def shortName(): String = "kusto"

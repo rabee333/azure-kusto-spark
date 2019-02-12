@@ -50,7 +50,7 @@ class KustoSourceE2E extends FlatSpec with BeforeAndAfterAll {
   private val loggingLevel: Option[String] = Option(System.getProperty("logLevel"))
   if (loggingLevel.isDefined) KDSU.setLoggingLevel(loggingLevel.get)
 
-  "KustoSource" should "execute a read query on Kusto cluster" taggedAs KustoE2E in {
+  "KustoSource" should "execute a read query on Kusto cluster in default (lean) mode" taggedAs KustoE2E in {
     val table: String = System.getProperty(KustoOptions.KUSTO_TABLE)
     var query: String = System.getProperty(KustoOptions.KUSTO_QUERY, s"table : take 10")
 
@@ -64,7 +64,7 @@ class KustoSourceE2E extends FlatSpec with BeforeAndAfterAll {
     df.show()
   }
 
-  "KustoConnector" should "write to a kusto table and read it back" taggedAs KustoE2E in {
+  "KustoConnector" should "write to a kusto table and read it back in lean mode" taggedAs KustoE2E in {
     import spark.implicits._
 
     val rowId = new AtomicInteger(1)
@@ -88,6 +88,7 @@ class KustoSourceE2E extends FlatSpec with BeforeAndAfterAll {
       .option(KustoOptions.KUSTO_AAD_CLIENT_ID, appId)
       .option(KustoOptions.KUSTO_AAD_CLIENT_PASSWORD, appKey)
       .option(KustoOptions.KUSTO_AAD_AUTHORITY_ID, authority)
+      .option(KustoOptions.KUSTO_READ_MODE, "lean")
       .save()
 
     val conf: Map[String, String] = Map(
