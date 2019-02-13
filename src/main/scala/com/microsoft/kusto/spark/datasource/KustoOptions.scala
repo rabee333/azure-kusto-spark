@@ -4,7 +4,6 @@ import java.util.Locale
 
 import org.apache.spark.sql.SaveMode
 
-
 object KustoOptions {
   private val kustoOptionNames = collection.mutable.Set[String]()
 
