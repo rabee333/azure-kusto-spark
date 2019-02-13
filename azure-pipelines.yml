@@ -4,7 +4,7 @@
 # https://docs.microsoft.com/azure/devops/pipelines/languages/java
 
 trigger:
-- master
+- dev
 
 pool:
   vmImage: 'Ubuntu-16.04'
@@ -19,4 +19,4 @@ steps:
     jdkArchitectureOption: 'x64'
     publishJUnitResults: false
     testResultsFiles: '**/surefire-reports/TEST-*.xml'
-    goals: 'package'
+    goals: 'scalastyle:check package'
